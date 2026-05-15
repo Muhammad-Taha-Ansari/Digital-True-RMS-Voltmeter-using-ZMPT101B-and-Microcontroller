@@ -1,0 +1,4 @@
+//Download using the given link.
+//Copy link and paste command window then press enter.
+
+winget install -e --id TeraTermProject.teraterm5
