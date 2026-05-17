@@ -2,8 +2,6 @@
  * ZMPT101B AC Voltmeter
  * ATmega328P @ 16 MHz | Code::Blocks AVR GCC | C89
  *
- * OLED driver copied from working System 319 project (same style).
- *
  * Wiring:
  *   OLED SDA -> A4 (PC4)
  *   OLED SCL -> A5 (PC5)
@@ -21,14 +19,11 @@
 #include <math.h>
 #include <stdlib.h>
 
-/* ============================================================
- *  CONFIG
- * ============================================================ */
 #define BAUD      9600UL
 #define UBRR_VAL  (F_CPU / 16UL / BAUD - 1)
 
 /* ============================================================
- *  I2C — copied exactly from System 319 (400 kHz)
+ *  I2C — 400 kHz
  * ============================================================ */
 static void i2c_init(void)
 {
@@ -36,18 +31,15 @@ static void i2c_init(void)
     TWSR &= ~((1 << TWPS1) | (1 << TWPS0));
     TWCR  = (1 << TWEN);
 }
-
 static void i2c_start(void)
 {
     TWCR = (1 << TWINT) | (1 << TWSTA) | (1 << TWEN);
     while (!(TWCR & (1 << TWINT)));
 }
-
 static void i2c_stop(void)
 {
     TWCR = (1 << TWINT) | (1 << TWSTO) | (1 << TWEN);
 }
-
 static void i2c_write(uint8_t data)
 {
     TWDR = data;
@@ -56,74 +48,45 @@ static void i2c_write(uint8_t data)
 }
 
 /* ============================================================
- *  SSD1306 OLED — copied exactly from System 319
- *  Address 0x3C → write byte = 0x78
+ *  SSD1306 OLED  (0x3C)
  * ============================================================ */
-#define OLED_W   0x78   /* (0x3C << 1) | 0 */
-#define SCR_W    128
-#define SCR_PG   8
+#define OLED_W  0x78
+#define SCR_W   128
+#define SCR_PG  8
 
 static void oled_cmd(uint8_t c)
 {
-    i2c_start();
-    i2c_write(OLED_W);
-    i2c_write(0x00);  /* command */
-    i2c_write(c);
-    i2c_stop();
+    i2c_start(); i2c_write(OLED_W); i2c_write(0x00); i2c_write(c); i2c_stop();
 }
-
 static void oled_dat(uint8_t d)
 {
-    i2c_start();
-    i2c_write(OLED_W);
-    i2c_write(0x40);  /* data */
-    i2c_write(d);
-    i2c_stop();
+    i2c_start(); i2c_write(OLED_W); i2c_write(0x40); i2c_write(d); i2c_stop();
 }
-
 static void oled_init(void)
 {
     uint8_t i;
     static const uint8_t seq[] PROGMEM = {
-        0xAE,
-        0xD5, 0x80,
-        0xA8, 0x3F,
-        0xD3, 0x00,
-        0x40,
-        0x8D, 0x14,
-        0x20, 0x00,
-        0xA1,
-        0xC8,
-        0xDA, 0x12,
-        0x81, 0xCF,
-        0xD9, 0xF1,
-        0xDB, 0x40,
-        0xA4,
-        0xA6,
-        0xAF
+        0xAE, 0xD5,0x80, 0xA8,0x3F, 0xD3,0x00, 0x40,
+        0x8D,0x14, 0x20,0x00, 0xA1, 0xC8, 0xDA,0x12,
+        0x81,0xCF, 0xD9,0xF1, 0xDB,0x40, 0xA4, 0xA6, 0xAF
     };
     _delay_ms(100);
-    for (i = 0; i < sizeof(seq); i++)
-        oled_cmd(pgm_read_byte(&seq[i]));
+    for (i = 0; i < sizeof(seq); i++) oled_cmd(pgm_read_byte(&seq[i]));
 }
-
 static void oled_pos(uint8_t page, uint8_t col)
 {
     oled_cmd((uint8_t)(0xB0 | (page & 0x07)));
     oled_cmd((uint8_t)(0x00 | (col  & 0x0F)));
     oled_cmd((uint8_t)(0x10 | (col  >> 4)));
 }
-
 static void oled_clear(void)
 {
-    uint8_t p;
-    uint8_t c;
+    uint8_t p; uint8_t c;
     for (p = 0; p < SCR_PG; p++) {
         oled_pos(p, 0);
         for (c = 0; c < SCR_W; c++) oled_dat(0x00);
     }
 }
-
 static void oled_row(uint8_t page, uint8_t pat)
 {
     uint8_t c;
@@ -132,10 +95,10 @@ static void oled_row(uint8_t page, uint8_t pat)
 }
 
 /* ============================================================
- *  5x7 FONT — stored in flash (same as System 319)
+ *  5x7 FONT
  * ============================================================ */
 static const uint8_t FONT[][5] PROGMEM = {
-    {0x00,0x00,0x00,0x00,0x00}, /* 0x20 ' ' */
+    {0x00,0x00,0x00,0x00,0x00}, /* ' ' */
     {0x00,0x00,0x5F,0x00,0x00}, /* '!' */
     {0x00,0x07,0x00,0x07,0x00}, /* '"' */
     {0x14,0x7F,0x14,0x7F,0x14}, /* '#' */
@@ -228,24 +191,17 @@ static const uint8_t FONT[][5] PROGMEM = {
     {0x44,0x64,0x54,0x4C,0x44}, /* 'z' */
 };
 
-/* Write one character — same as oled_ch in System 319 */
 static void oled_ch(uint8_t page, uint8_t col, char c)
 {
     uint8_t i;
     if (c < 0x20 || c > 0x7A) c = ' ';
     oled_pos(page, col);
-    for (i = 0; i < 5; i++)
-        oled_dat(pgm_read_byte(&FONT[c - 0x20][i]));
+    for (i = 0; i < 5; i++) oled_dat(pgm_read_byte(&FONT[c - 0x20][i]));
     oled_dat(0x00);
 }
-
-/* Write string — same as oled_str in System 319 */
 static void oled_str(uint8_t page, uint8_t col, const char *s)
 {
-    while (*s && col < SCR_W) {
-        oled_ch(page, col, *s++);
-        col += 6;
-    }
+    while (*s && col < SCR_W) { oled_ch(page, col, *s++); col += 6; }
 }
 
 /* ============================================================
@@ -258,21 +214,17 @@ static void uart_init(void)
     UCSR0B = (1 << TXEN0);
     UCSR0C = (3 << UCSZ00);
 }
-static void uart_char(char c)
-{
-    while (!(UCSR0A & (1 << UDRE0)));
-    UDR0 = (uint8_t)c;
-}
-static void uart_str(const char *s) { while (*s) uart_char(*s++); }
+static void uart_char(char c) { while(!(UCSR0A&(1<<UDRE0))); UDR0=(uint8_t)c; }
+static void uart_str(const char *s) { while(*s) uart_char(*s++); }
 
 /* ============================================================
  *  ADC
  * ============================================================ */
 static float adc_read(uint8_t ch)
 {
-    ADMUX  = (1 << REFS0) | (ch & 0x07);
+    ADMUX  = (1<<REFS0)|(ch&0x07);
     ADCSRA = (1<<ADEN)|(1<<ADSC)|(1<<ADPS2)|(1<<ADPS1)|(1<<ADPS0);
-    while (ADCSRA & (1 << ADSC));
+    while (ADCSRA & (1<<ADSC));
     return (float)ADC;
 }
 
@@ -281,18 +233,14 @@ static float adc_read(uint8_t ch)
  * ============================================================ */
 static uint8_t findMaxIndex(float arr[], uint8_t size)
 {
-    int i;
-    uint8_t idx = 0;
-    for (i = 1; i < size; i++)
-        if (arr[i] > arr[idx]) idx = (uint8_t)i;
+    int i; uint8_t idx = 0;
+    for (i=1; i<size; i++) if (arr[i]>arr[idx]) idx=(uint8_t)i;
     return idx;
 }
 static uint8_t findMinIndex(float arr[], uint8_t size)
 {
-    int i;
-    uint8_t idx = 0;
-    for (i = 1; i < size; i++)
-        if (arr[i] < arr[idx]) idx = (uint8_t)i;
+    int i; uint8_t idx = 0;
+    for (i=1; i<size; i++) if (arr[i]<arr[idx]) idx=(uint8_t)i;
     return idx;
 }
 
@@ -300,12 +248,12 @@ static uint8_t findMinIndex(float arr[], uint8_t size)
  *  SPLASH SCREEN
  *
  *  Page 0: ████████████████████  (solid)
- *  Page 1: "    ** VOLTMETER **"
- *  Page 2: "    ZMPT101B Sensor"
+ *  Page 1: "   ** VOLTMETER **"
+ *  Page 2: "   ZMPT101B Sensor"
  *  Page 3: ████████████████████  (solid)
- *  Page 4: "      AC  50 Hz    "
- *  Page 5: "   Initializing... "
- *  Page 6: (blank)
+ *  Page 4: "Lecturer:"
+ *  Page 5: "Sir HassanUlHaq"
+ *  Page 6: "Lead: M.Taha EE-319"
  *  Page 7: ████████████████████  (solid)
  * ============================================================ */
 static void oled_splash(void)
@@ -317,65 +265,65 @@ static void oled_splash(void)
     oled_row(3, 0xFF);
     oled_str(4,  4, "Lecturer:");
     oled_str(5,  4, "Sir HassanUlHaq");
-    oled_str(6,  4, "Lead: M. Taha EE-23319");
+    oled_str(6,  2, "Lead:M.Taha EE-319");
     oled_row(7, 0xFF);
 }
 
 /* ============================================================
- *  LIVE SCREEN
+ *  LIVE SCREEN — matches image exactly
  *
- *  Page 0: ████ === VOLTMETER === ████
- *  Page 1: ████████████████████████████
- *  Page 2: "  Vavg:   X.XXX V"
- *  Page 3: (blank)
- *  Page 4: "  Vrms:   X.XXX V"
- *  Page 5: (blank)
- *  Page 6: "  AC 50Hz  ZMPT101B"
- *  Page 7: ████████████████████████████
+ *  Page 0: "==== VOLTMETER ===="
+ *  Page 1: blank
+ *  Page 2: "Vavg:      2.518 V"
+ *  Page 3: blank
+ *  Page 4: "Vrms:      0.347 V"
+ *  Page 5: blank
+ *  Page 6: "AC 50Hz  ZMPT101B"
+ *  Page 7: blank
  * ============================================================ */
 static void oled_update(float vavg, float vrms)
 {
     char buf[12];
-    char line[20];
-    uint8_t k;
 
-    /* Page 0 — header */
-    oled_row(0, 0xFF);
-    oled_str(0, 10, "=== VOLTMETER ===");
+    /* Page 0 — header centered */
+    oled_row(0, 0x00);
+    oled_str(0, 4, "==== VOLTMETER ====");
 
-    /* Page 1 — solid line */
-    oled_row(1, 0xFF);
+    /* Page 1 — blank */
+    oled_row(1, 0x00);
 
-    /* Page 2 — Vavg */
+    /* Page 2 — Vavg
+     * "Vavg:" label at col 2
+     * value at col 56 (big gap like reference image)
+     * "V" at col 98
+     */
     oled_row(2, 0x00);
+    oled_str(2,  2, "Vavg:");
     dtostrf(vavg, 7, 3, buf);
-    line[0]='V'; line[1]='a'; line[2]='v'; line[3]='g';
-    line[4]=':'; line[5]=' ';
-    for (k = 0; k < 7; k++) line[6+k] = buf[k];
-    line[13]=' '; line[14]='V'; line[15]='\0';
-    oled_str(2, 4, line);
+    oled_str(2, 56, buf);
+    oled_str(2, 98, "V");
 
     /* Page 3 — blank */
     oled_row(3, 0x00);
 
-    /* Page 4 — Vrms */
+    /* Page 4 — Vrms same layout */
     oled_row(4, 0x00);
+    oled_str(4,  2, "Vrms:");
     dtostrf(vrms, 7, 3, buf);
-    line[0]='V'; line[1]='r'; line[2]='m'; line[3]='s';
-    line[4]=':'; line[5]=' ';
-    for (k = 0; k < 7; k++) line[6+k] = buf[k];
-    line[13]=' '; line[14]='V'; line[15]='\0';
-    oled_str(4, 4, line);
+    oled_str(4, 56, buf);
+    oled_str(4, 98, "V");
 
-    /* Page 5 — blank */
+    /* Page 5 — status (moved here so font bleed goes to blank page 6) */
     oled_row(5, 0x00);
+    oled_str(5, 4, "AC 50Hz  ZMPT101B");
 
-    /* Page 6 — status */
+    /* Page 6 — blank buffer (catches font pixel bleed from page 5) */
     oled_row(6, 0x00);
-    oled_str(6, 4, "AC 50Hz  ZMPT101B");
 
-    /* Page 7 — solid line */
-    oled_row(7, 0xFF);
+    /* Page 7 — clear top pixel only (removes font underline bleed)
+     * 0x01 = only bottom bit set = top row of page = pixel row 56
+     * We write 0x00 to wipe any leftover pixels from page 6 font */
+    oled_row(7, 0x00);
 }
 
 /* ============================================================
@@ -397,18 +345,18 @@ int main(void)
     oled_init();
     oled_clear();
 
-    /* Splash */
+    /* OLED Splash */
     oled_splash();
 
-    /* Tera Term splash */
+    /* Tera Term Splash */
     uart_str("\r\n");
-    uart_str("================================\r\n");
-    uart_str("        ** VOLTMETER **         \r\n");
-    uart_str("     ZMPT101B AC Sensor         \r\n");
-    uart_str("--------------------------------\r\n");
-    uart_str(" Lecturer : Sir HassanUlHaq     \r\n");
-    uart_str(" Lead     : Muhammad Taha EE-319\r\n");
-    uart_str("================================\r\n");
+    uart_str("==================================\r\n");
+    uart_str("        ** VOLTMETER **           \r\n");
+    uart_str("      ZMPT101B AC Sensor          \r\n");
+    uart_str("----------------------------------\r\n");
+    uart_str(" Lecturer : Sir HassanUlHaq      \r\n");
+    uart_str(" Lead     : M. Taha  EE-23319    \r\n");
+    uart_str("==================================\r\n");
     uart_str("\r\n");
 
     _delay_ms(2000);
@@ -416,7 +364,7 @@ int main(void)
 
     while (1)
     {
-        /* 1. Sample */
+        /* 1. Sample 200 points */
         for (i = 0; i < 200; i++)
             voltage[i] = adc_read(0) * (5.0f / 1023.0f);
 
@@ -428,12 +376,10 @@ int main(void)
         Vavg = 0.0f;
         half = (max_idx > min_idx) ? (max_idx - min_idx)
                                    : (min_idx - max_idx);
+        if (half < 1)  half = 1;
+        if (half > 99) half = 99;
 
-        /* Safety: half must be 1-99 so 2*half stays within 200 */
-        if (half < 1)   half = 1;
-        if (half > 99)  half = 99;
-
-        for (i = 0; i < (2 * half); i++) Vavg += voltage[i];
+        for (i = 0; i < (2*half); i++) Vavg += voltage[i];
         Vavg = (float)fabs(Vavg / (2.0f * (float)half));
 
         /* 4. Remove offset */
@@ -441,24 +387,22 @@ int main(void)
 
         /* 5. RMS */
         Vrms = 0.0f;
-        for (i = 0; i < (2 * half); i++)
+        for (i = 0; i < (2*half); i++)
             Vrms += voltage[i] * voltage[i];
         Vrms = (float)sqrt((double)(Vrms / (2.0f * (float)half)));
 
-        /* 6. Sanity check — INF/NaN guard */
+        /* 6. Sanity guard */
         if (Vavg > 5.0f || Vavg < 0.0f) Vavg = 0.0f;
         if (Vrms > 5.0f || Vrms < 0.0f) Vrms = 0.0f;
 
-        /* 7. UART — next line pe print */
+        /* 7. UART — new line each update */
         uart_str("  Vavg: ");
-        dtostrf(Vavg, 6, 3, buf);
-        uart_str(buf);
+        dtostrf(Vavg, 6, 3, buf); uart_str(buf);
         uart_str(" V  |  Vrms: ");
-        dtostrf(Vrms, 6, 3, buf);
-        uart_str(buf);
+        dtostrf(Vrms, 6, 3, buf); uart_str(buf);
         uart_str(" V\r\n");
 
-        /* 7. OLED */
+        /* 8. OLED */
         oled_update(Vavg, Vrms);
 
         _delay_ms(500);
