@@ -1,0 +1,4 @@
+# depslib dependency file v1.0
+1778969370 source:c:\users\taha\documents\code\volt_meter\fuse.c
+	<avr/io.h>
+
